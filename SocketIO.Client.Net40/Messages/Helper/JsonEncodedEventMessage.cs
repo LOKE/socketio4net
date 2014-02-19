@@ -7,6 +7,10 @@ using Newtonsoft.Json;
 
 namespace SocketIOClient.Messages
 {
+    using Newtonsoft.Json.Serialization;
+
+    using SocketIOClient.Messages.Helper;
+
     public class JsonEncodedEventMessage
     {
 		/// <summary>
@@ -59,13 +63,16 @@ namespace SocketIOClient.Messages
 
         public string ToJsonString()
         {
-            return JsonConvert.SerializeObject(this, Formatting.None);
+            return JsonConvert.SerializeObject(this, JsonSettings.Default);
         }
 
         public static JsonEncodedEventMessage Deserialize(string jsonString)
         {
 			JsonEncodedEventMessage msg = null;
-			try { msg = JsonConvert.DeserializeObject<JsonEncodedEventMessage>(jsonString); }
+            try
+            {
+                msg = JsonConvert.DeserializeObject<JsonEncodedEventMessage>(jsonString);
+            }
 			catch (Exception ex)
 			{
 				Trace.WriteLine(ex);

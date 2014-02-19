@@ -112,10 +112,9 @@ namespace SocketIOClient
         {
             get
             {
-                if (this.ioTransport != null)
-                    return this.ioTransport.State;
-                else
-                    return WebSocketState.None;
+                //Trace.TraceInformation("iotransport {0}", ioTransport == null ? "null" : ioTransport.State.ToString());
+
+                return this.ioTransport == null ? WebSocketState.None : this.ioTransport.State;
             }
         }
 
@@ -144,6 +143,9 @@ namespace SocketIOClient
             {
                 try
                 {
+                    if (this.registrationManager == null) this.registrationManager = new RegistrationManager();
+                    if (this.outboundQueue == null) this.outboundQueue = new BlockingCollection<string>(new ConcurrentQueue<string>());
+
                     if (this.TransportPeferenceTypes.Count == 0)
                     {
                         var transports = (TransportType[])Enum.GetValues(typeof(TransportType));
@@ -151,8 +153,8 @@ namespace SocketIOClient
                     }
 
                     this.ConnectionOpenEvent.Reset();
-                    this.RequestHandshake(uri)
-                        .ContinueWith(task =>
+                    
+                    this.RequestHandshake(uri).ContinueWith(task =>
                             {
                                 if (string.IsNullOrWhiteSpace(this.HandShake.SID) ||
                                     this.HandShake.HadError)
@@ -200,7 +202,8 @@ namespace SocketIOClient
                 TransportType type = allowedTransports[idx];
                 try
                 {
-                    ITransport _trspt = TransportFactory.Transport(type, this.HandShake);
+                    ITransport _trspt = this.ioTransport = TransportFactory.Transport(type, this.HandShake);
+
                     this.AttachTransportEvents(_trspt);
                     bool status = await _trspt.OpenAsync();
                     if (status && _trspt.State == WebSocketState.Open)

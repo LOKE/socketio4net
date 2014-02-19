@@ -1,8 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2013
-VisualStudioVersion = 12.0.21005.1
-MinimumVisualStudioVersion = 10.0.40219.1
+# Visual Studio 2012
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".nuget", ".nuget", "{F883DD5D-A735-4E42-93F7-4AE6E950E104}"
 	ProjectSection(SolutionItems) = preProject
 		.nuget\NuGet.Config = .nuget\NuGet.Config
@@ -21,6 +19,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{CB9333AA-E019-41CA-B631-A1569438FBA7}"
 	ProjectSection(SolutionItems) = preProject
 		LICENSE = LICENSE
+		Package.nuspec = Package.nuspec
 		README.md = README.md
 	EndProjectSection
 EndProject

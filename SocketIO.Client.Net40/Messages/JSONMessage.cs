@@ -7,11 +7,13 @@ using Newtonsoft.Json;
 
 namespace SocketIOClient.Messages
 {
+    using SocketIOClient.Messages.Helper;
+
     public class JSONMessage : Message
     {
         public void SetMessage(object value)
         {
-            this.MessageText = JsonConvert.SerializeObject(value, Formatting.None);
+            this.MessageText = JsonConvert.SerializeObject(value, JsonSettings.Default);
         }
 
         public virtual T Message<T>()
@@ -33,7 +35,7 @@ namespace SocketIOClient.Messages
         {
             this.AckId = ackId;
             this.Endpoint = endpoint;
-            this.MessageText = JsonConvert.SerializeObject(jsonObject, Formatting.None);
+            this.MessageText = JsonConvert.SerializeObject(jsonObject, JsonSettings.Default);
         }
 
         public static JSONMessage Deserialize(string rawMessage)

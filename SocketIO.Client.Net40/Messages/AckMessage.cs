@@ -6,82 +6,100 @@ using System.Text.RegularExpressions;
 
 namespace SocketIOClient.Messages
 {
-	public sealed class AckMessage : Message
-	{
-		private static Regex reAckId = new Regex(@"^(\d{1,})");
- 		private static Regex reAckPayload = new Regex(@"(?:[\d\+]*)(?<data>.*)$");
-		private static Regex reAckComplex = new Regex(@"^\[(?<payload>.*)\]$");
+    using Newtonsoft.Json;
 
-		private static object ackLock = new object();
-		private static int _akid = 0;
-		public static int NextAckID
-		{
-			get
-			{
-				lock (ackLock)
-				{
-					_akid++;
-					if (_akid < 0)
-						_akid = 0;
-					return _akid;
-				}
-			}
-		}
+    using SocketIOClient.Messages.Helper;
 
-		public Action<dynamic> Callback;
+    public sealed class AckMessage : Message
+    {
+        private static Regex reAckId = new Regex(@"^(\d{1,})");
+        private static Regex reAckPayload = new Regex(@"(?:[\d\+]*)(?<data>.*)$");
+        private static Regex reAckComplex = new Regex(@"^\[(?<payload>.*)\]$");
 
-		public AckMessage()
-			: base()
+        private static object ackLock = new object();
+        private static int _akid = 0;
+        public static int NextAckID
+        {
+            get
+            {
+                lock (ackLock)
+                {
+                    _akid++;
+                    if (_akid < 0)
+                        _akid = 0;
+                    return _akid;
+                }
+            }
+        }
+
+        public Action<dynamic> Callback;
+
+        public AckMessage()
+            : base()
         {
             this.MessageType = SocketIOMessageTypes.ACK;
         }
-		
-		public static AckMessage Deserialize(string rawMessage)
+
+        public void SetArgs(dynamic[] arguments)
         {
-			AckMessage msg = new AckMessage();
-			//  '6:::' [message id] '+' [data]
-			//   6:::4
-			//	 6:::4+["A","B"]
-			msg.RawMessage = rawMessage;
+            this.MessageText = JsonConvert.SerializeObject(arguments, JsonSettings.Default);
+        }
+
+        public void SetArg(dynamic argument)
+        {
+            this.SetArgs(new []{argument});
+        }
+
+        public static AckMessage Deserialize(string rawMessage)
+        {
+            AckMessage msg = new AckMessage();
+            //  '6:::' [message id] '+' [data]
+            //   6:::4
+            //	 6:::4+["A","B"]
+            msg.RawMessage = rawMessage;
 
             string[] args = rawMessage.Split(SPLITCHARS, 4);
             if (args.Length == 4)
             {
-				msg.Endpoint = args[2];
+                msg.Endpoint = args[2];
                 int id;
-				string[] parts = args[3].Split(new char[] {'+'});
-				if (parts.Length > 1)
-				{
-					if (int.TryParse(parts[0], out id))
-					{
-						msg.AckId = id;
-						msg.MessageText = parts[1];
-						Match payloadMatch = reAckComplex.Match(msg.MessageText);
+                string[] parts = args[3].Split(new char[] {'+'});
+                if (parts.Length > 1)
+                {
+                    if (int.TryParse(parts[0], out id))
+                    {
+                        msg.AckId = id;
+                        msg.MessageText = parts[1];
+                        Match payloadMatch = reAckComplex.Match(msg.MessageText);
 
-						if (payloadMatch.Success)
-						{
-							msg.Json = new JsonEncodedEventMessage(null, payloadMatch.Groups["payload"].Value);
-						}
-					}
-				}
+                        if (payloadMatch.Success)
+                        {
+                            msg.Json = new JsonEncodedEventMessage(null, payloadMatch.Groups["payload"].Value);
+                        }
+                    }
+                }
             }
-			return msg;
+            return msg;
         }
-		public override string Encoded
-		{
-			get
-			{
-				int msgId = (int)this.MessageType;
-				if (this.AckId.HasValue)
-				{
-					if (this.Callback == null)
-						return string.Format("{0}:{1}:{2}:{3}", msgId, this.AckId ?? -1, this.Endpoint, this.MessageText);
-					else
-						return string.Format("{0}:{1}+:{2}:{3}", msgId, this.AckId ?? -1, this.Endpoint, this.MessageText);
-				}
-				else
-					return string.Format("{0}::{1}:{2}", msgId, this.Endpoint, this.MessageText);
-			}
-		}
-	}
+        public override string Encoded
+        {
+            // TODO: This was broken. Still not fully fixed. Packet format is wrong!
+            // should be like: https://github.com/LearnBoost/socket.io-spec#6-ack - '6:::' [message id] '+' [data]
+            get
+            {
+                int msgId = (int)this.MessageType;
+                if (this.AckId.HasValue)
+                {
+                    if (this.Callback == null && string.IsNullOrEmpty(this.MessageText))
+                        //return string.Format("{0}:{1}:{2}:{3}", msgId, this.AckId ?? -1, this.Endpoint, this.MessageText);
+                        return string.Format("{0}:::{1}", msgId, this.AckId.Value);
+                    else
+                        //return string.Format("{0}:{1}+:{2}:{3}", msgId, this.AckId ?? -1, this.Endpoint, this.MessageText);
+                        return string.Format("{0}:::{1}+{2}", msgId, this.AckId.Value, this.MessageText);
+                }
+                else
+                    return string.Format("{0}::{1}:{2}", msgId, this.Endpoint, this.MessageText);
+            }
+        }
+    }
 }
