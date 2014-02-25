@@ -4,7 +4,7 @@ namespace SocketIOClient
 	/// <summary>
 	/// C# Socket.IO client interface
 	/// </summary>
-	interface IClient
+	public interface IClient
 	{
 		event EventHandler Opened;
 		event EventHandler<MessageEventArgs> Message;
@@ -14,6 +14,7 @@ namespace SocketIOClient
 		IOHandshake HandShake { get; }
 		bool IsConnected { get; }
 		WebSocketState ReadyState { get; }
+        int RetryConnectionAttempts { get; set; }
 
         void Connect();
 		IEndPointClient Connect(string endPoint);

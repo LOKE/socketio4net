@@ -19,7 +19,7 @@ namespace SocketIOClient
     /// Class to emulate the socket.io javascript client capabilities for .net classes
     /// </summary>
     /// <exception cref = "ArgumentException">Connection for wss or https urls</exception>  
-    public partial class Client : IDisposable, SocketIOClient.IClient
+    public partial class Client : IDisposable, IClient
     {
         private Timer socketHeartBeatTimer; // HeartBeat timer 
         private Task dequeuOutBoundMsgTask;
