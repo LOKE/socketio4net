@@ -34,9 +34,11 @@ namespace SocketIOClient.Messages
         /// <summary>
         /// Creates a message that replies to this one.
         /// </summary>
-        /// <param name="response">The response.</param>
-        /// <returns>A new message that is a response to this one</returns>
-        public AckMessage CreateReply(dynamic argument)
+        /// <param name="argument">The argument.</param>
+        /// <returns>
+        /// A new message that is a response to this one
+        /// </returns>
+        public virtual AckMessage CreateReply(dynamic argument)
         {
             var ack = new AckMessage()
             {
