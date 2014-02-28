@@ -127,6 +127,11 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="$(SolutionDir)\.nuget\NuGet.targets" Condition="Exists('$(SolutionDir)\.nuget\NuGet.targets')" />
   <Import Project="..\packages\Microsoft.Bcl.Build.1.0.4\tools\Microsoft.Bcl.Build.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>if $(ConfigurationName) == Release del $(TargetDir)*.nupkg
+if $(ConfigurationName) == Release cmd /c $(SolutionDir).nuget\NuGet.exe pack $(SolutionDir)Package.nuspec
+</PostBuildEvent>
+  </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">

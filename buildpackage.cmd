@@ -1,1 +1,1 @@
-.nuget\NuGet.exe pack Package.nuspec
+.nuget\NuGet.exe pack %1Package.nuspec
