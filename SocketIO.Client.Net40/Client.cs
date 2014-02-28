@@ -363,6 +363,7 @@ namespace SocketIOClient
                     if (callback != null)
                         this.registrationManager.AddCallBack(msg);
 
+                    Trace.WriteLine("Emitting message: " + msg.MessageText);
                     this.Send(msg);
                     break;
             }
