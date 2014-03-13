@@ -19,10 +19,14 @@ namespace SocketIOClient.Transports
 												   handshake.SID, handshake.Uri.Query);
                     transport = new WebSocketProxy(cs, string.Empty, handshake);
 					break;
-				case TransportType.XhrPolling:
-					transport = new XhrPolling(handshake);
-					break;
-				default:
+
+#if NET45
+                case TransportType.XhrPolling:
+                    transport = new XhrPolling(handshake);
+                    break;
+#endif
+
+                default:
 					throw new ArgumentException(string.Format("An transport of type {0} cannot be found", Enum.GetName(typeof(TransportType), type)));
 			}
 			return transport;

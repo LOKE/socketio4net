@@ -83,6 +83,79 @@ namespace SocketIOClient
 			this.ErrorMessage = string.Empty;
 		}
 
+#if NET40
+        public Task RequestHandshake()
+        {
+            string value = string.Empty;
+            string errorText = string.Empty;
+
+            try
+            {
+                return Helpers.DownloadTasks.DownloadString(
+                    string.Format("{0}://{1}:{2}/socket.io/1/{3}", Uri.Scheme, Uri.Host, Uri.Port, Uri.Query)) // #5 tkiley: The uri.Query is available in socket.io's handshakeData object during authorization
+                .ContinueWith(
+                    task =>
+                    {
+                        if (task.IsFaulted)
+                        {
+                            errorText = task.Exception == null
+                                ? string.Format("Error getting handshake from Socket.IO host instance")
+                                : string.Format("Error getting handshake from Socket.IO host instance: {0}", task.Exception.Message);
+                        }
+                        else if (task.IsCanceled) errorText = "Handshake canceled";
+                        else if (string.IsNullOrEmpty(value)) errorText = "Did not receive handshake from server";
+
+                        if (string.IsNullOrEmpty(errorText)) this.UpdateFromSocketIOResponse(task.Result);
+                        else this.ErrorMessage = errorText;
+                    });
+            }
+            #region Catch Exceptions
+            catch (WebException webEx)
+            {
+                Trace.WriteLine(string.Format("Handshake threw an exception...{0}", webEx.Message));
+                switch (webEx.Status)
+                {
+                    case WebExceptionStatus.ConnectFailure:
+                        errorText = string.Format("Unable to contact the server: {0}", webEx.Status);
+                        break;
+                    case WebExceptionStatus.NameResolutionFailure:
+                        errorText = string.Format("Unable to resolve address: {0}", webEx.Status);
+                        break;
+                    case WebExceptionStatus.ProtocolError:
+                        var resp = webEx.Response as HttpWebResponse;//((System.Net.HttpWebResponse)(webEx.Response))
+                        if (resp != null)
+                        {
+                            switch (resp.StatusCode)
+                            {
+                                case HttpStatusCode.Forbidden:
+                                    errorText = "Socket.IO Handshake Authorization failed";
+                                    break;
+                                default:
+                                    errorText = string.Format("Handshake response status code: {0}", resp.StatusCode);
+                                    break;
+                            }
+                        }
+                        else
+                            errorText = string.Format("Error getting handshake from Socket.IO host instance: {0}", webEx.Message);
+                        break;
+                    default:
+                        errorText = string.Format("Handshake threw an exception...{0}", webEx.Message);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                errorText = string.Format("Error getting handshake from Socket.IO host instance: {0}", ex.Message);
+                //this.OnErrorEvent(this, new ErrorEventArgs(errMsg));
+            }
+            return Task.Factory.StartNew(() => { });
+
+            #endregion
+        }
+
+#endif
+
+#if NET45
 	    public async Task RequestHandshake()
         {
             string value = string.Empty;
@@ -145,6 +218,9 @@ namespace SocketIOClient
             else
                 this.ErrorMessage = errorText;
         }
+#endif
+
+
 		/// <summary>
 		/// </summary>
 		/// <param name="value"></param>

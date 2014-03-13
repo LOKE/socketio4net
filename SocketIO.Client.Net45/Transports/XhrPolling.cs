@@ -1,6 +1,4 @@
-﻿#if NET45
-
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Net.Http;
@@ -42,9 +40,9 @@ namespace SocketIOClient
                 //           Query = string.Format("t={0}", Environment.TickCount)
                 //       }.Uri;
                 return new UriBuilder(new Uri(Handshake.Uri, string.Format("socket.io/1/xhr-polling/{0}/", Handshake.SID)))
-                       {
-                           Query = string.Format("t={0}", Environment.TickCount)
-                       }.Uri;
+                {
+                    Query = string.Format("t={0}", Environment.TickCount)
+                }.Uri;
             }
         }
 
@@ -75,11 +73,11 @@ namespace SocketIOClient
             }
             return tcs.Task;
         }
-       
+
         private async void MessageLoop(TaskCompletionSource<bool> tcs)
         {
             var pollTask = _http.GetAsync(Uri);
-            
+
 
             while (pollTask != null)
             {
@@ -121,7 +119,7 @@ namespace SocketIOClient
             }
         }
 
-        
+
 
         public async void Send(string message)
         {
@@ -161,6 +159,3 @@ namespace SocketIOClient
         }
     }
 }
-
-
-#endif

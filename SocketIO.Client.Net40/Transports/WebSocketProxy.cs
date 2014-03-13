@@ -92,9 +92,19 @@ namespace SocketIOClient
             base.Opened -= WebSocketProxyOpened;
             base.Close();
         }
+
+#if NET40
+        public Task<bool> Reconnect()
+        {
+            return OpenAsync();
+        }
+#endif
+
+#if NET45
         public async Task<bool> Reconnect()
         {
             return await OpenAsync();
         }
+#endif
     }
 }

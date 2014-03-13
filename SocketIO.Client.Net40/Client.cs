@@ -192,6 +192,66 @@ namespace SocketIOClient
             this.Connect();
         }
 
+#if NET40
+        private Task<ITransport> ResolveTransport()
+        {
+            return Task<ITransport>.Factory.StartNew(
+                () =>
+                    {
+                        ITransport transport = null;
+                        int idx = 0;
+                        int totalAvail = allowedTransports.Count;
+                        while (idx < allowedTransports.Count)
+                        {
+                            TransportType type = allowedTransports[idx];
+                            try
+                            {
+                                ITransport _trspt = this.ioTransport = TransportFactory.Transport(type, this.HandShake);
+
+                                this.AttachTransportEvents(_trspt);
+                                var nestedTask = _trspt.OpenAsync()
+                                .ContinueWith(
+                                    task =>
+                                        {
+                                            if (task.IsFaulted) throw task.Exception;
+
+                                            bool status = task.Result;
+                                            if (status && _trspt.State == WebSocketState.Open)
+                                            {
+                                                transport = _trspt;
+                                                Trace.WriteLine(string.Format("webSocket Connected via: {0}", type.ToString()));
+                                            }
+                                            else
+                                            {
+                                                this.DetachTransportEvents(_trspt);
+                                            }
+
+                                            return transport;
+                                        });
+
+                                return nestedTask.Result;
+                            }
+                            catch (Exception ex)
+                            {
+                                //throw new Exception("Transport types have been exhausted", ex);
+                                Trace.WriteLine("Resolve-exceptions:" + ex.Message);
+                            }
+                            finally
+                            {
+                                idx++;
+                            }
+                        }
+                        if (transport == null)
+                        {
+                            throw new Exception("Transport types have been exhausted");
+                        }
+                        return transport;
+                    });
+        }
+#endif
+
+
+#if NET45
         private async Task<ITransport> ResolveTransport()
         {
             ITransport transport = null;
@@ -233,6 +293,10 @@ namespace SocketIOClient
             }
             return transport;
         }
+#endif
+
+
+
         public IEndPointClient Connect(string endPoint)
         {
             var nsClient = new EndPointClient(this, endPoint);
@@ -241,6 +305,45 @@ namespace SocketIOClient
             return nsClient;
         }
         
+#if NET40
+        protected void ReConnect()
+        {
+            this.retryConnectionCount++;
+
+            this.OnConnectionRetryAttemptEvent(this, EventArgs.Empty);
+
+            this.CloseHeartBeatTimer(); // stop the heartbeat time
+            this.CloseWebSocketClient();// stop websocket
+            this.HandShake.ResetConnection();
+            if (this.ioTransport != null)
+            {
+                this.ioTransport.Handshake.ResetConnection();
+                var task = this.ioTransport.Reconnect();
+                task.Wait();
+                bool connected = task.Result;
+
+                Trace.WriteLine(string.Format("\tRetry-Connection successful: {0}", connected));
+                if (connected)
+                    this.retryConnectionCount = 0;
+                else
+                {
+                    // we didn't connect - try again until exhausted
+                    if (this.retryConnectionCount < this.RetryConnectionAttempts)
+                    {
+                        this.ReConnect();
+                    }
+                    else
+                    {
+                        this.Close();
+                        this.OnSocketConnectionClosedEvent(this, EventArgs.Empty);
+                    }
+                }
+            }
+        }
+#endif
+
+
+#if NET45
         protected async void ReConnect()
         {
             this.retryConnectionCount++;
@@ -273,6 +376,7 @@ namespace SocketIOClient
                 }
             }
         }
+#endif
 
         private void AttachTransportEvents(ITransport transport)
         {
@@ -662,6 +766,98 @@ namespace SocketIOClient
             }
         }
 
+
+#if NET40
+
+        /// <summary>
+        /// <para>Client performs an initial HTTP POST to obtain a SessionId (sid) assigned to a client, followed
+        ///  by the heartbeat timeout, connection closing timeout, and the list of supported transports.</para>
+        /// <para>The transport and sid are required as part of the ws: | wss: connection</para>
+        /// </summary>
+        /// <param name="uri">http://localhost:3000</param>
+        /// <returns>Handshake object with sid value</returns>
+        /// <example>DownloadString: 13052140081337757257:15:25:websocket,htmlfile,xhr-polling,jsonp-polling</example>
+        protected Task RequestHandshake(Uri uri)
+        {
+            string errorText = string.Empty;
+
+            try
+            {
+                return Helpers.DownloadTasks.DownloadString(
+                    string.Format("{0}://{1}:{2}/socket.io/1/{3}", uri.Scheme, uri.Host, uri.Port, uri.Query))
+                    // #5 tkiley: The uri.Query is available in socket.io's handshakeData object during authorization
+                .ContinueWith(
+                    task =>
+                        {
+                            if (task.IsFaulted)
+                            {
+
+                            }
+                            else if (task.IsCanceled)
+                            {
+
+                            }
+                            else
+                            {
+                                string value = task.Result;
+                                // 13052140081337757257:15:25:websocket,htmlfile,xhr-polling,jsonp-polling
+                                if (string.IsNullOrEmpty(value)) errorText = "Did not receive handshake from server";
+
+                                if (string.IsNullOrEmpty(errorText)) this.HandShake.UpdateFromSocketIOResponse(value);
+                                else this.HandShake.ErrorMessage = errorText;
+                            }
+                        });
+            }
+            #region Catch Exceptions
+            catch (WebException webEx)
+            {
+                Trace.WriteLine(string.Format("Handshake threw an exception...{0}", webEx.Message));
+                switch (webEx.Status)
+                {
+                    case WebExceptionStatus.ConnectFailure:
+                        errorText = string.Format("Unable to contact the server: {0}", webEx.Status);
+                        break;
+                    case WebExceptionStatus.NameResolutionFailure:
+                        errorText = string.Format("Unable to resolve address: {0}", webEx.Status);
+                        break;
+                    case WebExceptionStatus.ProtocolError:
+                        var resp = webEx.Response as HttpWebResponse; //((System.Net.HttpWebResponse)(webEx.Response))
+                        if (resp != null)
+                        {
+                            switch (resp.StatusCode)
+                            {
+                                case HttpStatusCode.Forbidden:
+                                    errorText = "Socket.IO Handshake Authorization failed";
+                                    break;
+                                default:
+                                    errorText = string.Format("Handshake response status code: {0}", resp.StatusCode);
+                                    break;
+                            }
+                        }
+                        else
+                            errorText = string.Format(
+                                "Error getting handshake from Socket.IO host instance: {0}",
+                                webEx.Message);
+                        break;
+                    default:
+                        errorText = string.Format("Handshake threw an exception...{0}", webEx.Message);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                errorText = string.Format("Error getting handshake from Socket.IO host instance: {0}", ex.Message);
+                //this.OnErrorEvent(this, new ErrorEventArgs(errMsg));
+            }
+            return Task.Factory.StartNew(() => {});
+
+            #endregion
+        }
+
+#endif
+
+
+#if NET45
         /// <summary>
         /// <para>Client performs an initial HTTP POST to obtain a SessionId (sid) assigned to a client, followed
         ///  by the heartbeat timeout, connection closing timeout, and the list of supported transports.</para>
@@ -730,6 +926,7 @@ namespace SocketIOClient
             else
                 this.HandShake.ErrorMessage = errorText;
         }
+#endif
 
         public void Dispose()
         {
@@ -750,6 +947,4 @@ namespace SocketIOClient
 
         }
     }
-
-
 }
