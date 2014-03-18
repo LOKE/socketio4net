@@ -3,7 +3,9 @@
     using System;
     using System.Collections.Generic;
     using System.Collections.Specialized;
+    using System.Diagnostics;
     using System.Net;
+    using System.Threading;
     using System.Threading.Tasks;
 
     public static class DownloadTasks
@@ -25,14 +27,17 @@
                 {
                     if (args.Error != null)
                     {
+                        Trace.TraceError("Web request error");
                         taskSource.SetException(args.Error);
                     }
                     else if (args.Cancelled)
                     {
+                        Trace.TraceError("Web request canceled");
                         taskSource.SetCanceled();
                     }
                     else
                     {
+                        Trace.TraceInformation("Web request response" + Thread.CurrentThread.ManagedThreadId.ToString());
                         taskSource.SetResult(args.Result);
                     }
                 }
@@ -41,7 +46,13 @@
                     webClient.Dispose();
                 }
             };
-            webClient.DownloadStringAsync(uri);
+            Trace.TraceInformation("Web request" + Thread.CurrentThread.ManagedThreadId.ToString());
+            ThreadPool.QueueUserWorkItem(
+                state =>
+                    {
+                        webClient.DownloadStringAsync(uri);
+                    });
+            
 
             return taskSource.Task;
         }

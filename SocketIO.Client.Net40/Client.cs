@@ -24,6 +24,7 @@ namespace SocketIOClient
         private Timer socketHeartBeatTimer; // HeartBeat timer 
         private Task dequeuOutBoundMsgTask;
         private BlockingCollection<string> outboundQueue;
+        private bool connecting = false;
         private int retryConnectionCount = 0;
         private int retryConnectionAttempts = 3;
         private readonly static object padLock = new object(); // allow one connection attempt at a time
@@ -114,7 +115,9 @@ namespace SocketIOClient
             {
                 //Trace.TraceInformation("iotransport {0}", ioTransport == null ? "null" : ioTransport.State.ToString());
 
-                return this.ioTransport == null ? WebSocketState.None : this.ioTransport.State;
+                return this.ioTransport == null 
+                    ? this.connecting ? WebSocketState.Connecting : WebSocketState.None 
+                    : this.ioTransport.State;
             }
         }
 
@@ -133,54 +136,59 @@ namespace SocketIOClient
             //this.dequeuOutBoundMsgTask = Task.Factory.StartNew(() => dequeuOutboundMessages(), TaskCreationOptions.LongRunning);
             this.dequeuOutBoundMsgTask = Task.Factory.StartNew(DequeuOutboundMessages, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
-        
+
         /// <summary>
         /// Initiate the connection with Socket.IO service
         /// </summary>
         public void Connect()
         {
-            if (!(this.ReadyState == WebSocketState.Connecting || this.ReadyState == WebSocketState.Open))
+            if (this.ReadyState == WebSocketState.Connecting || this.ReadyState == WebSocketState.Open) return;
+
+            try
             {
-                try
+                Trace.TraceInformation("Connect");
+                this.connecting = true;
+                if (this.registrationManager == null) this.registrationManager = new RegistrationManager();
+                if (this.outboundQueue == null) this.outboundQueue = new BlockingCollection<string>(new ConcurrentQueue<string>());
+
+                if (this.TransportPeferenceTypes.Count == 0)
                 {
-                    if (this.registrationManager == null) this.registrationManager = new RegistrationManager();
-                    if (this.outboundQueue == null) this.outboundQueue = new BlockingCollection<string>(new ConcurrentQueue<string>());
+                    var transports = (TransportType[])Enum.GetValues(typeof(TransportType));
+                    this.TransportPeferenceTypes.AddRange(new List<TransportType>(transports)); 
+                }
 
-                    if (this.TransportPeferenceTypes.Count == 0)
-                    {
-                        var transports = (TransportType[])Enum.GetValues(typeof(TransportType));
-                        this.TransportPeferenceTypes.AddRange(new List<TransportType>(transports)); 
-                    }
-
-                    this.ConnectionOpenEvent.Reset();
+                this.ConnectionOpenEvent.Reset();
                     
-                    this.RequestHandshake(uri).ContinueWith(task =>
-                            {
-                                if (string.IsNullOrWhiteSpace(this.HandShake.SID) ||
-                                    this.HandShake.HadError)
-                                {
-                                    this.LastErrorMessage = string.Format("Error initializing handshake with {0}", uri.ToString());
-                                    this.OnErrorEvent(this, new ErrorEventArgs(this.LastErrorMessage, new Exception()));
-                                }
-                                else
-                                {
-                                    this.allowedTransports = new List<TransportType>(TransportPeferenceTypes.Union(this.HandShake.AvailableTransports));
-                                    var t = this.ResolveTransport()
-                                        .ContinueWith(r =>
+                this.RequestHandshake(this.uri).ContinueWith(task =>
+                    {
+                        Trace.TraceInformation("RequestHandshake > ContinueWith");
+
+                        if (string.IsNullOrWhiteSpace(this.HandShake.SID) ||
+                            this.HandShake.HadError)
+                        {
+                            this.LastErrorMessage = string.Format("Error initializing handshake with {0}", this.uri.ToString());
+                            this.OnErrorEvent(this, new ErrorEventArgs(this.LastErrorMessage, new Exception()));
+                        }
+                        else
+                        {
+                            this.allowedTransports = new List<TransportType>(this.TransportPeferenceTypes.Union(this.HandShake.AvailableTransports));
+                            var t = this.ResolveTransport()
+                                .ContinueWith(r =>
+                                    {
+                                        if (r.Result != null)
                                         {
-                                            if (r.Result != null)
-                                            {
-                                                this.ioTransport = r.Result;
-                                            }
-                                        });
-                                }
-                            });
-                }
-                catch (Exception ex)
-                {
-                    Trace.WriteLine(string.Format("Connect threw an exception...{0}", ex.Message));
-                    this.OnErrorEvent(this, new ErrorEventArgs("SocketIO.Client.Connect threw an exception", ex));
-                }
+                                            this.ioTransport = r.Result;
+                                        }
+                                    });
+                        }
+                        this.connecting = false;
+                    });
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine(string.Format("Connect threw an exception...{0}", ex.Message));
+                this.OnErrorEvent(this, new ErrorEventArgs("SocketIO.Client.Connect threw an exception", ex));
+                this.connecting = false;
             }
         }
 
@@ -779,6 +787,7 @@ namespace SocketIOClient
         /// <example>DownloadString: 13052140081337757257:15:25:websocket,htmlfile,xhr-polling,jsonp-polling</example>
         protected Task RequestHandshake(Uri uri)
         {
+            Trace.TraceInformation("RequestHandshake");
             string errorText = string.Empty;
 
             try
@@ -791,15 +800,16 @@ namespace SocketIOClient
                         {
                             if (task.IsFaulted)
                             {
-
+                                Trace.TraceError("Task is faulted");
                             }
                             else if (task.IsCanceled)
                             {
-
+                                Trace.TraceError("Task is canceled");
                             }
                             else
                             {
                                 string value = task.Result;
+                                Trace.TraceInformation("Handshake Success: " + value);
                                 // 13052140081337757257:15:25:websocket,htmlfile,xhr-polling,jsonp-polling
                                 if (string.IsNullOrEmpty(value)) errorText = "Did not receive handshake from server";
 
