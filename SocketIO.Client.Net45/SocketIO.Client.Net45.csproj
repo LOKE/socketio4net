@@ -48,6 +48,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\SocketIO.Client.Net40\Client.cs">
+      <Link>Client.cs</Link>
+    </Compile>
     <Compile Include="..\SocketIO.Client.Net40\EventArgs\ErrorEventArgs.cs">
       <Link>EventArgs\ErrorEventArgs.cs</Link>
     </Compile>

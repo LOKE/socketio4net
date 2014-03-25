@@ -3,7 +3,7 @@
   <metadata>
     <id>AstonClub.SocketIO4Net</id>
     <title>SocketIO4Net (Aston Club)</title>
-    <version>1.1.1</version>
+    <version>1.2.0</version>
     <authors>Aston Club</authors>
     <owners>Aston Club</owners>
     <licenseUrl>http://opensource.org/licenses/ms-pl.html</licenseUrl>
@@ -25,6 +25,6 @@
   </metadata>
   <files>
     <file src="SocketIO.Client.Net40\bin\Release\SocketIO.Client.Net40.dll" target="lib/net40" />
-    <file src="SocketIO.Client.Net45\bin\Release\SocketIO.Client.Net45.dll" target="lib/net45" />
+    <!--<file src="SocketIO.Client.Net45\bin\Release\SocketIO.Client.Net45.dll" target="lib/net45" />-->
   </files>
 </package>
