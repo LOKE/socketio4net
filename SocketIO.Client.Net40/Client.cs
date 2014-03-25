@@ -15,6 +15,8 @@ using WebSocket4Net;
 
 namespace SocketIOClient
 {
+    using SocketIOClient.Helpers;
+
     /// <summary>
     /// Class to emulate the socket.io javascript client capabilities for .net classes
     /// </summary>
@@ -96,6 +98,14 @@ namespace SocketIOClient
         public IOHandshake HandShake { get; private set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether debug trace information is sent.
+        /// </summary>
+        /// <value>
+        ///   <c>true</c> if [debug]; otherwise, <c>false</c>.
+        /// </value>
+        public bool Debug { get; set; }
+
+        /// <summary>
         /// Returns boolean of ReadyState == WebSocketState.Open
         /// </summary>
         public bool IsConnected
@@ -113,7 +123,7 @@ namespace SocketIOClient
         {
             get
             {
-                //Trace.TraceInformation("iotransport {0}", ioTransport == null ? "null" : ioTransport.State.ToString());
+                // TraceInformation("iotransport {0}", ioTransport == null ? "null" : ioTransport.State.ToString());
 
                 return this.ioTransport == null 
                     ? this.connecting ? WebSocketState.Connecting : WebSocketState.None 
@@ -128,13 +138,57 @@ namespace SocketIOClient
         }
         public Client(string url, NameValueCollection headers)
         {
-            this.uri = new Uri(url);
-            this.HandShake = new IOHandshake(this.uri, headers);
+            this.Debug = true;
 
+            this.uri = new Uri(url);
+            this.Headers = headers;
+
+            this.Init();
+        }
+
+        private NameValueCollection Headers { get; set; }
+
+        private void Init()
+        {
+            if (this.TaskCanceler != null) this.TaskCanceler.Cancel();
+            this.TaskCanceler = null;
+
+            var regMgr = this.registrationManager;
+            var q = this.outboundQueue;
+
+            this.HandShake = new IOHandshake(this.uri, this.Headers);
             this.registrationManager = new RegistrationManager();
             this.outboundQueue = new BlockingCollection<string>(new ConcurrentQueue<string>());
-            //this.dequeuOutBoundMsgTask = Task.Factory.StartNew(() => dequeuOutboundMessages(), TaskCreationOptions.LongRunning);
-            this.dequeuOutBoundMsgTask = Task.Factory.StartNew(DequeuOutboundMessages, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+            if (regMgr != null) regMgr.Dispose();
+            if (q != null) q.Dispose();
+
+            this.TaskCanceler = new CancellationTokenSource();
+            this.dequeuOutBoundMsgTask =
+                Task.Factory.StartNew(
+                    this.DequeuOutboundMessages,
+                    this.TaskCanceler.Token,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default)
+                .ContinueWith(t => t.HandleIfFailed());
+        }
+
+        private CancellationTokenSource TaskCanceler { get; set; }
+
+        private void DeInit()
+        {
+            if (this.TaskCanceler != null) this.TaskCanceler.Cancel();
+            this.TaskCanceler = null;
+
+            var regMgr = this.registrationManager;
+            var q = this.outboundQueue;
+
+            this.HandShake = new IOHandshake(this.uri, this.Headers);
+            this.registrationManager = new RegistrationManager();
+            this.outboundQueue = new BlockingCollection<string>(new ConcurrentQueue<string>());
+
+            if (regMgr != null) regMgr.Dispose();
+            if (q != null) q.Dispose();
         }
 
         /// <summary>
@@ -142,14 +196,19 @@ namespace SocketIOClient
         /// </summary>
         public void Connect()
         {
-            if (this.ReadyState == WebSocketState.Connecting || this.ReadyState == WebSocketState.Open) return;
+            var readyState = this.ReadyState;
+            if (readyState == WebSocketState.Connecting || readyState == WebSocketState.Open)
+            {
+                this.TraceWarning("Cannot connect, ReadyState is {0}", readyState);
+                return;
+            }
 
             try
             {
-                Trace.TraceInformation("Connect");
+                this.TraceInformation("Connect");
                 this.connecting = true;
-                if (this.registrationManager == null) this.registrationManager = new RegistrationManager();
-                if (this.outboundQueue == null) this.outboundQueue = new BlockingCollection<string>(new ConcurrentQueue<string>());
+
+                this.Init();
 
                 if (this.TransportPeferenceTypes.Count == 0)
                 {
@@ -161,7 +220,15 @@ namespace SocketIOClient
                     
                 this.RequestHandshake(this.uri).ContinueWith(task =>
                     {
-                        Trace.TraceInformation("RequestHandshake > ContinueWith");
+                        if (task.IsFaulted || task.IsCanceled || task.Exception != null)
+                        {
+                            this.TraceError("RequestHandshake Failed");
+                            this.connecting = false;
+                            task.HandleIfFailed();
+                            return;
+                        }
+
+                        this.TraceInformation("RequestHandshake > ContinueWith");
 
                         if (string.IsNullOrWhiteSpace(this.HandShake.SID) ||
                             this.HandShake.HadError)
@@ -172,10 +239,17 @@ namespace SocketIOClient
                         else
                         {
                             this.allowedTransports = new List<TransportType>(this.TransportPeferenceTypes.Union(this.HandShake.AvailableTransports));
-                            var t = this.ResolveTransport()
+                            this.ResolveTransport()
                                 .ContinueWith(r =>
                                     {
-                                        if (r.Result != null)
+                                        if (r.Exception != null)
+                                        {
+                                            TraceError(
+                                                "ResolveTransport error: {0}",
+                                                r.Exception.InnerExceptions.First().Message);
+                                            r.HandleIfFailed();
+                                        }
+                                        else if (r.Result != null)
                                         {
                                             this.ioTransport = r.Result;
                                         }
@@ -186,7 +260,7 @@ namespace SocketIOClient
             }
             catch (Exception ex)
             {
-                Trace.WriteLine(string.Format("Connect threw an exception...{0}", ex.Message));
+                this.TraceError(string.Format("Connect threw an exception...{0}", ex.Message));
                 this.OnErrorEvent(this, new ErrorEventArgs("SocketIO.Client.Connect threw an exception", ex));
                 this.connecting = false;
             }
@@ -221,13 +295,13 @@ namespace SocketIOClient
                                 .ContinueWith(
                                     task =>
                                         {
-                                            if (task.IsFaulted) throw task.Exception;
+                                            task.ThrowIfFailed();
 
                                             bool status = task.Result;
                                             if (status && _trspt.State == WebSocketState.Open)
                                             {
                                                 transport = _trspt;
-                                                Trace.WriteLine(string.Format("webSocket Connected via: {0}", type.ToString()));
+                                                this.TraceInformation("webSocket Connected via: {0}", type.ToString());
                                             }
                                             else
                                             {
@@ -242,7 +316,7 @@ namespace SocketIOClient
                             catch (Exception ex)
                             {
                                 //throw new Exception("Transport types have been exhausted", ex);
-                                Trace.WriteLine("Resolve-exceptions:" + ex.Message);
+                                this.TraceError("Resolve-exceptions:" + ex.Message);
                             }
                             finally
                             {
@@ -277,7 +351,7 @@ namespace SocketIOClient
                     if (status && _trspt.State == WebSocketState.Open)
                     {
                         transport = _trspt;
-                        Trace.WriteLine(string.Format("webSocket Connected via: {0}", type.ToString()));
+                        this.TraceInformation("webSocket Connected via: {0}", type.ToString());
                         break;
                     }
                     else
@@ -288,7 +362,7 @@ namespace SocketIOClient
                 catch (Exception ex)
                 {
                     //throw new Exception("Transport types have been exhausted", ex);
-                    Trace.WriteLine("Resolve-exceptions:" + ex.Message);
+                    this.TraceError("Resolve-exceptions:" + ex.Message);
                 }
                 finally
                 {
@@ -316,6 +390,8 @@ namespace SocketIOClient
 #if NET40
         protected void ReConnect()
         {
+            this.TraceInformation("Reconnecting...");
+
             this.retryConnectionCount++;
 
             this.OnConnectionRetryAttemptEvent(this, EventArgs.Empty);
@@ -330,7 +406,7 @@ namespace SocketIOClient
                 task.Wait();
                 bool connected = task.Result;
 
-                Trace.WriteLine(string.Format("\tRetry-Connection successful: {0}", connected));
+                this.TraceInformation(string.Format("\tRetry-Connection successful: {0}", connected));
                 if (connected)
                     this.retryConnectionCount = 0;
                 else
@@ -458,6 +534,7 @@ namespace SocketIOClient
                     {
                         msg = new TextMessage();
                     }
+                    this.TraceInformation("Emit message: " + msg.MessageText);
                     this.Send(msg);
                     break;
                 case "connect":
@@ -475,7 +552,7 @@ namespace SocketIOClient
                     if (callback != null)
                         this.registrationManager.AddCallBack(msg);
 
-                    Trace.WriteLine("Emitting message: " + msg.MessageText);
+                    this.TraceInformation("Emit {0}: {1}", lceventName, msg.MessageText);
                     this.Send(msg);
                     break;
             }
@@ -522,7 +599,7 @@ namespace SocketIOClient
         /// <param name="msg"></param>
         protected void OnMessageEvent(IMessage msg)
         {
-
+            this.TraceInformation("OnMessageEvent: {0}", msg.MessageType.ToString());
             bool skip = false;
             if (!string.IsNullOrEmpty(msg.Event))
                 skip = this.registrationManager.InvokeOnEvent(msg); // 
@@ -530,7 +607,7 @@ namespace SocketIOClient
             var handler = this.Message;
             if (handler != null && !skip)
             {
-                Trace.WriteLine(string.Format("webSocket_OnMessage: {0}", msg.RawMessage));
+                this.TraceInformation("webSocket_OnMessage: {0}", msg.RawMessage);
                 handler(this, new MessageEventArgs(msg));
             }
         }
@@ -587,7 +664,7 @@ namespace SocketIOClient
                 if (this.ioTransport.State == WebSocketState.Connecting || this.ioTransport.State == WebSocketState.Open)
                 {
                     try { this.ioTransport.Close(); }
-                    catch { Trace.WriteLine("exception raised trying to close websocket: can safely ignore, socket is being closed"); }
+                    catch { this.TraceError("exception raised trying to close websocket: can safely ignore, socket is being closed"); }
                 }
                 this.ioTransport = null;
             }
@@ -603,7 +680,7 @@ namespace SocketIOClient
             if (this.Opened != null)
             {
                 try { this.Opened(this, EventArgs.Empty); }
-                catch (Exception ex) { Trace.WriteLine(ex); }
+                catch (Exception ex) { this.TraceError("WsClientOpenEvent Error: {0}", ex.Message); }
             }
 
         }
@@ -615,11 +692,14 @@ namespace SocketIOClient
         /// <param name="e"></param>
         private void WsClientMessageReceived(object sender, TransportReceivedEventArgs e)
         {
+            this.TraceInformation("WsClientMessageReceived: {0}", e.Message);
 
             IMessage iMsg = SocketIOClient.Messages.Message.Factory(e.Message);
 
+            this.TraceInformation("iMessage: {0}", iMsg.MessageType.ToString());
+
             if (iMsg.Event == "responseMsg")
-                Trace.WriteLine(string.Format("InvokeOnEvent: {0}", iMsg.RawMessage));
+                this.TraceInformation("InvokeOnEvent: {0}", iMsg.RawMessage);
 
             switch (iMsg.MessageType)
             {
@@ -644,7 +724,7 @@ namespace SocketIOClient
                 case SocketIOMessageTypes.Noop:
                     break;
                 default:
-                    Trace.WriteLine("unknown wsClient message Received...");
+                    this.TraceInformation("unknown wsClient message Received...");
                     break;
             }
         }
@@ -656,13 +736,16 @@ namespace SocketIOClient
         /// <param name="e"></param>
         private void WsClientClosed(object sender, EventArgs e)
         {
+            this.TraceWarning("WsClientClosed");
             if (this.retryConnectionCount < this.RetryConnectionAttempts)
             {
+                this.TraceInformation("Try reconnect...");
                 this.ConnectionOpenEvent.Reset();
                 this.ReConnect();
             }
             else
             {
+                this.TraceWarning("No more retries");
                 this.DetachTransportEvents(this.ioTransport);
                 this.Close();
                 this.OnSocketConnectionClosedEvent(this, EventArgs.Empty);
@@ -682,16 +765,17 @@ namespace SocketIOClient
                 try { this.Error.Invoke(this, e); }
                 catch { }
             }
-            Trace.WriteLine(string.Format("Error Event: {0}\r\n\t{1}", e.Message, e.Exception));
+            this.TraceError(string.Format("WsClientError: {0}\r\n\t{1}", e.Message, e.Exception));
         }
         protected void OnSocketConnectionClosedEvent(object sender, EventArgs e)
         {
+            this.DeInit();
+            this.TraceInformation("SocketConnectionClosedEvent");
             if (this.SocketConnectionClosed != null)
             {
                 try { this.SocketConnectionClosed(sender, e); }
                 catch { }
             }
-            Trace.WriteLine("SocketConnectionClosedEvent");
         }
         protected void OnConnectionRetryAttemptEvent(object sender, EventArgs e)
         {
@@ -700,7 +784,7 @@ namespace SocketIOClient
                 try { this.ConnectionRetryAttempt(sender, e); }
                 catch (Exception ex) { Trace.WriteLine(ex); }
             }
-            Trace.WriteLine(string.Format("Attempting to reconnect: {0}", this.retryConnectionCount));
+            this.TraceInformation(string.Format("Attempting to reconnect: {0}", this.retryConnectionCount));
         }
 
         // Housekeeping
@@ -723,7 +807,7 @@ namespace SocketIOClient
                 catch (Exception ex)
                 {
                     // 
-                    Trace.WriteLine(string.Format("OnHeartBeatTimerCallback Error Event: {0}\r\n\t{1}", ex.Message, ex.InnerException));
+                    this.TraceError(string.Format("OnHeartBeatTimerCallback Error Event: {0}\r\n\t{1}", ex.Message, ex.InnerException));
                 }
             }
         }
@@ -739,7 +823,7 @@ namespace SocketIOClient
             catch
             {
                 // Handle any exceptions that were thrown by the invoked method
-                Trace.WriteLine("An event listener went kaboom!");
+                this.TraceError("An event listener went kaboom!");
             }
         }
         /// <summary>
@@ -754,6 +838,7 @@ namespace SocketIOClient
                     string msgString;
                     try
                     {
+                        // will loop every 500ms if nothing to take
                         if (this.outboundQueue.TryTake(out msgString, 500))
                         {
                             //Trace.WriteLine(string.Format("webSocket_Send: {0}", msgString));
@@ -764,7 +849,7 @@ namespace SocketIOClient
                     }
                     catch (Exception ex)
                     {
-                        Trace.WriteLine("The outboundQueue is no longer open...");
+                        this.TraceError("The outboundQueue is no longer open...");
                     }
                 }
                 else
@@ -787,7 +872,7 @@ namespace SocketIOClient
         /// <example>DownloadString: 13052140081337757257:15:25:websocket,htmlfile,xhr-polling,jsonp-polling</example>
         protected Task RequestHandshake(Uri uri)
         {
-            Trace.TraceInformation("RequestHandshake");
+            this.TraceInformation("RequestHandshake");
             string errorText = string.Empty;
 
             try
@@ -798,30 +883,20 @@ namespace SocketIOClient
                 .ContinueWith(
                     task =>
                         {
-                            if (task.IsFaulted)
-                            {
-                                Trace.TraceError("Task is faulted");
-                            }
-                            else if (task.IsCanceled)
-                            {
-                                Trace.TraceError("Task is canceled");
-                            }
-                            else
-                            {
-                                string value = task.Result;
-                                Trace.TraceInformation("Handshake Success: " + value);
-                                // 13052140081337757257:15:25:websocket,htmlfile,xhr-polling,jsonp-polling
-                                if (string.IsNullOrEmpty(value)) errorText = "Did not receive handshake from server";
+                            task.ThrowIfFailed();
+                            string value = task.Result;
+                            this.TraceInformation("Handshake Success: " + value);
+                            // 13052140081337757257:15:25:websocket,htmlfile,xhr-polling,jsonp-polling
+                            if (string.IsNullOrEmpty(value)) errorText = "Did not receive handshake from server";
 
-                                if (string.IsNullOrEmpty(errorText)) this.HandShake.UpdateFromSocketIOResponse(value);
-                                else this.HandShake.ErrorMessage = errorText;
-                            }
+                            if (string.IsNullOrEmpty(errorText)) this.HandShake.UpdateFromSocketIOResponse(value);
+                            else this.HandShake.ErrorMessage = errorText;
                         });
             }
             #region Catch Exceptions
             catch (WebException webEx)
             {
-                Trace.WriteLine(string.Format("Handshake threw an exception...{0}", webEx.Message));
+                this.TraceError(string.Format("Handshake threw an exception...{0}", webEx.Message));
                 switch (webEx.Status)
                 {
                     case WebExceptionStatus.ConnectFailure:
@@ -955,6 +1030,22 @@ namespace SocketIOClient
                 this.ConnectionOpenEvent.Dispose();
             }
 
+        }
+
+
+        private void TraceInformation(string format, params object[] args)
+        {
+            if (this.Debug) Trace.TraceInformation(format, args);
+        }
+
+        private void TraceWarning(string format, params object[] args)
+        {
+            if (this.Debug) Trace.TraceWarning(format, args);
+        }
+
+        private void TraceError(string format, params object[] args)
+        {
+            if (this.Debug) Trace.TraceError(format, args);
         }
     }
 }

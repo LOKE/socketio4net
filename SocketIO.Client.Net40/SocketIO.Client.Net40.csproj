@@ -52,7 +52,9 @@
   <ItemGroup>
     <Compile Include="Client.cs" />
     <Compile Include="EventArgs\TransportReceivedEventArgs.cs" />
+    <Compile Include="Helpers\AggregateExceptionExtensions.cs" />
     <Compile Include="Helpers\DownloadTasks.cs" />
+    <Compile Include="Helpers\TaskExtensions.cs" />
     <Compile Include="Infrastructure\EndPointClient.cs" />
     <Compile Include="EventArgs\ErrorEventArgs.cs" />
     <Compile Include="Infrastructure\IOHandshake.cs" />

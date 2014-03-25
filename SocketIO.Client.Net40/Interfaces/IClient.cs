@@ -12,8 +12,9 @@ namespace SocketIOClient
 		event EventHandler<ErrorEventArgs> Error;
 
 		IOHandshake HandShake { get; }
-		bool IsConnected { get; }
-		WebSocketState ReadyState { get; }
+        bool Debug { get; set; }
+        bool IsConnected { get; }
+        WebSocketState ReadyState { get; }
         int RetryConnectionAttempts { get; set; }
 
         void Connect();
