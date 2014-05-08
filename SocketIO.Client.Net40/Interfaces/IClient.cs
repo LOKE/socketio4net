@@ -9,7 +9,8 @@ namespace SocketIOClient
 		event EventHandler Opened;
 		event EventHandler<MessageEventArgs> Message;
 		event EventHandler SocketConnectionClosed;
-		event EventHandler<ErrorEventArgs> Error;
+        event EventHandler<ErrorEventArgs> ConnectionError;
+        event EventHandler<ErrorEventArgs> Error;
 
 		IOHandshake HandShake { get; }
         bool Debug { get; set; }
