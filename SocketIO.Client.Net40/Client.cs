@@ -477,13 +477,13 @@ namespace SocketIOClient
             transport.Opened += this.WsClientOpenEvent;
             transport.MessageReceived += this.WsClientMessageReceived;
             transport.Error += this.WsClientError;
-            transport.Closed += WsClientClosed;
+            transport.Closed += this.WsClientClosed;
         }
 
         private void DetachTransportEvents(ITransport transport)
         {
             transport.Closed -= this.WsClientClosed;
-            transport.MessageReceived -= WsClientMessageReceived;
+            transport.MessageReceived -= this.WsClientMessageReceived;
             transport.Error -= WsClientError;
             transport.Opened -= this.WsClientOpenEvent;
         }
@@ -659,6 +659,7 @@ namespace SocketIOClient
             // stop outbound messages
             if (this.outboundQueue != null)
             {
+                var queue = this.outboundQueue;
                 this.outboundQueue.CompleteAdding(); // stop adding any more items;
                 this.dequeuOutBoundMsgTask.Wait(700); // wait for dequeue thread to stop
                 this.outboundQueue.Dispose();
