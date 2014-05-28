@@ -74,3 +74,4 @@ excludeFiles.txt
 samples/node.server/node_modules/socket.io/node_modules/redis/package.json
 samples/node.server/node_modules/socket.io/node_modules/socket.io-client/node_modules/uglify-js/package.json
 samples/node.server/node_modules/socket.io/package.json
+*.nupkg
