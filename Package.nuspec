@@ -21,6 +21,6 @@
   </metadata>
   <files>
     <file src="SocketIO.Client.Net40\bin\Release\SocketIO.Client.Net40.dll" target="lib/net40" />
-    <file src="SocketIO.Client.Net45\bin\Release\SocketIO.Client.Net45.dll" target="lib/net45" />
+    <!--<file src="SocketIO.Client.Net45\bin\Release\SocketIO.Client.Net45.dll" target="lib/net45" />-->
   </files>
 </package>
