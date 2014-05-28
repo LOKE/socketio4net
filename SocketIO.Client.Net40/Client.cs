@@ -223,6 +223,7 @@ namespace SocketIOClient
                         if (task.IsFaulted || task.IsCanceled || task.Exception != null)
                         {
                             this.TraceError("RequestHandshake Failed");
+                            this.OnConnectionError(new ErrorEventArgs("Handshake error", task.Exception.HandleAndGetFirst()));
                             this.connecting = false;
                             task.HandleIfFailed();
                             return;
@@ -234,7 +235,7 @@ namespace SocketIOClient
                             this.HandShake.HadError)
                         {
                             this.LastErrorMessage = string.Format("Error initializing handshake with {0}", this.uri.ToString());
-                            this.OnErrorEvent(this, new ErrorEventArgs(this.LastErrorMessage, new Exception()));
+                            this.OnConnectionError(new ErrorEventArgs(this.LastErrorMessage, new Exception()));
                         }
                         else
                         {
@@ -244,9 +245,7 @@ namespace SocketIOClient
                                     {
                                         if (r.Exception != null)
                                         {
-                                            TraceError(
-                                                "ResolveTransport error: {0}",
-                                                r.Exception.InnerExceptions.First().Message);
+                                            TraceError("ResolveTransport error: {0}", r.Exception.InnerExceptions.First().Message);
                                             r.HandleIfFailed();
                                         }
                                         else if (r.Result != null)
@@ -272,6 +271,17 @@ namespace SocketIOClient
             this.TransportPeferenceTypes.Add(transport);
 
             this.Connect();
+        }
+
+        /// <summary>
+        /// Triggered when an error occurs during a connection attempt
+        /// </summary>
+        public event EventHandler<ErrorEventArgs> ConnectionError;
+
+        protected void OnConnectionError(ErrorEventArgs args)
+        {
+            if (this.ConnectionError != null) this.ConnectionError(this, args);
+            this.OnErrorEvent(this, args);
         }
 
 #if NET40
@@ -467,13 +477,13 @@ namespace SocketIOClient
             transport.Opened += this.WsClientOpenEvent;
             transport.MessageReceived += this.WsClientMessageReceived;
             transport.Error += this.WsClientError;
-            transport.Closed += WsClientClosed;
+            transport.Closed += this.WsClientClosed;
         }
 
         private void DetachTransportEvents(ITransport transport)
         {
             transport.Closed -= this.WsClientClosed;
-            transport.MessageReceived -= WsClientMessageReceived;
+            transport.MessageReceived -= this.WsClientMessageReceived;
             transport.Error -= WsClientError;
             transport.Opened -= this.WsClientOpenEvent;
         }
@@ -649,6 +659,7 @@ namespace SocketIOClient
             // stop outbound messages
             if (this.outboundQueue != null)
             {
+                var queue = this.outboundQueue;
                 this.outboundQueue.CompleteAdding(); // stop adding any more items;
                 this.dequeuOutBoundMsgTask.Wait(700); // wait for dequeue thread to stop
                 this.outboundQueue.Dispose();
