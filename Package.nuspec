@@ -11,7 +11,7 @@
     <!--<iconUrl>http://ICON_URL_HERE_OR_DELETE_THIS_LINE</iconUrl>-->
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Fork of SocketIO4Net that fixes some features not working in the original.</description>
-    <releaseNotes>Remove BCL dependencies. Upgraded to WebSocket4Net 0.9. Bug fixes.</releaseNotes>
+    <releaseNotes>Using client profile for .NET 4.0</releaseNotes>
     <copyright>Copyright 2014</copyright>
     <tags>astonclub websocket nodejs socketio</tags>
     <dependencies>
