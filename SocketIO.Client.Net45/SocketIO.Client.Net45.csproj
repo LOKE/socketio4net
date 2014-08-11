@@ -60,6 +60,18 @@
     <Compile Include="..\SocketIO.Client.Net40\EventArgs\TransportReceivedEventArgs.cs">
       <Link>EventArgs\TransportReceivedEventArgs.cs</Link>
     </Compile>
+    <Compile Include="..\SocketIO.Client.Net40\Helpers\AggregateExceptionExtensions.cs">
+      <Link>Helpers\AggregateExceptionExtensions.cs</Link>
+    </Compile>
+    <Compile Include="..\SocketIO.Client.Net40\Helpers\DownloadTasks.cs">
+      <Link>Helpers\DownloadTasks.cs</Link>
+    </Compile>
+    <Compile Include="..\SocketIO.Client.Net40\Helpers\TaskAsyncHelpers.cs">
+      <Link>Helpers\TaskAsyncHelpers.cs</Link>
+    </Compile>
+    <Compile Include="..\SocketIO.Client.Net40\Helpers\TaskExtensions.cs">
+      <Link>Helpers\TaskExtensions.cs</Link>
+    </Compile>
     <Compile Include="..\SocketIO.Client.Net40\Infrastructure\EndPointClient.cs">
       <Link>Infrastructure\EndPointClient.cs</Link>
     </Compile>
