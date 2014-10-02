@@ -715,9 +715,12 @@ namespace SocketIOClient
             switch (iMsg.MessageType)
             {
                 case SocketIOMessageTypes.Disconnect:
-                    this.OnMessageEvent(iMsg);
                     if (string.IsNullOrWhiteSpace(iMsg.Endpoint)) // Disconnect the whole socket
+                    {
                         this.Close();
+                        this.OnSocketConnectionClosedEvent(this, EventArgs.Empty);
+                    }
+                    this.OnMessageEvent(iMsg);
                     break;
                 case SocketIOMessageTypes.Heartbeat:
                     this.OnHeartBeatTimerCallback(null);
